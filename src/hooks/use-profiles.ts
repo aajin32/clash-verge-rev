@@ -1,161 +1,220 @@
-import useSWR, { mutate } from "swr";
+import { useQuery } from '@tanstack/react-query'
+import { selectNodeForGroup } from 'tauri-plugin-mihomo-api'
+
 import {
+  calcuProxies,
   getProfiles,
   patchProfile,
   patchProfilesConfig,
-  forceRefreshProxies,
-} from "@/services/cmds";
-import { getProxies, updateProxy } from "@/services/cmds";
+} from '@/services/cmds'
+import { queryClient } from '@/services/query-client'
+import { debugLog } from '@/utils/debug'
 
 export const useProfiles = () => {
   const {
     data: profiles,
-    mutate: mutateProfiles,
+    refetch,
     error,
-    isValidating,
-  } = useSWR("getProfiles", getProfiles, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    dedupingInterval: 500, // 减少去重时间，提高响应性
-    errorRetryCount: 3,
-    errorRetryInterval: 1000,
-    refreshInterval: 0, // 完全由手动控制
-    onError: (error) => {
-      console.error("[useProfiles] SWR错误:", error);
-    },
-    onSuccess: (data) => {
-      console.log(
-        "[useProfiles] 配置数据更新成功，配置数量:",
+    isFetching: isValidating,
+  } = useQuery({
+    queryKey: ['getProfiles'],
+    queryFn: async () => {
+      const data = await getProfiles()
+      debugLog(
+        '[useProfiles] 配置数据更新成功，配置数量:',
         data?.items?.length || 0,
-      );
+      )
+      return data
     },
-  });
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 500,
+    retry: 3,
+    retryDelay: 1000,
+    refetchInterval: false,
+  })
+
+  const mutateProfiles = async () => {
+    await refetch()
+  }
 
   const patchProfiles = async (
     value: Partial<IProfilesConfig>,
     signal?: AbortSignal,
+    options?: { deferRefreshOnSuccess?: boolean },
   ) => {
     try {
       if (signal?.aborted) {
-        throw new DOMException("Operation was aborted", "AbortError");
+        throw new DOMException('Operation was aborted', 'AbortError')
       }
-      const success = await patchProfilesConfig(value);
+      const success = await patchProfilesConfig(value)
 
       if (signal?.aborted) {
-        throw new DOMException("Operation was aborted", "AbortError");
+        throw new DOMException('Operation was aborted', 'AbortError')
       }
 
-      await mutateProfiles();
+      if (!options?.deferRefreshOnSuccess || !success) {
+        await mutateProfiles()
+      }
 
-      return success;
+      return success
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw error;
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
       }
 
-      await mutateProfiles();
-      throw error;
+      await mutateProfiles()
+      throw error
     }
-  };
+  }
 
   const patchCurrent = async (value: Partial<IProfileItem>) => {
     if (profiles?.current) {
-      await patchProfile(profiles.current, value);
-      mutateProfiles();
+      await patchProfile(profiles.current, value)
+      if (!value.selected) {
+        mutateProfiles()
+      }
     }
-  };
+  }
 
   // 根据selected的节点选择
-  const activateSelected = async () => {
+  const activateSelected = async (profileOverride?: IProfilesConfig) => {
     try {
-      console.log("[ActivateSelected] 开始处理代理选择");
+      debugLog('[ActivateSelected] 开始处理代理选择')
 
-      const [proxiesData, profileData] = await Promise.all([
-        getProxies(),
-        getProfiles(),
-      ]);
+      const proxiesData = await calcuProxies()
+      const profileData = profileOverride ?? profiles
 
-      if (!profileData || !proxiesData) {
-        console.log("[ActivateSelected] 代理或配置数据不可用，跳过处理");
-        return;
+      if (!profileData || !proxiesData || !profileData.items) {
+        debugLog('[ActivateSelected] 代理或配置数据不可用，跳过处理')
+        return
       }
 
       const current = profileData.items?.find(
         (e) => e && e.uid === profileData.current,
-      );
+      )
 
       if (!current) {
-        console.log("[ActivateSelected] 未找到当前profile配置");
-        return;
+        debugLog('[ActivateSelected] 未找到当前profile配置')
+        return
       }
 
       // 检查是否有saved的代理选择
-      const { selected = [] } = current;
+      const { selected = [] } = current
       if (selected.length === 0) {
-        console.log("[ActivateSelected] 当前profile无保存的代理选择，跳过");
-        return;
+        debugLog('[ActivateSelected] 当前profile无保存的代理选择，跳过')
+        return
       }
 
-      console.log(
+      debugLog(
         `[ActivateSelected] 当前profile有 ${selected.length} 个代理选择配置`,
-      );
+      )
 
+      type SelectedEntry = { name?: string; now?: string }
       const selectedMap = Object.fromEntries(
-        selected.map((each) => [each.name!, each.now!]),
-      );
+        (selected as SelectedEntry[])
+          .filter(
+            (each): each is SelectedEntry & { name: string; now: string } =>
+              each.name != null && each.now != null,
+          )
+          .map((each) => [each.name, each.now]),
+      )
 
-      let hasChange = false;
-      const newSelected: typeof selected = [];
-      const { global, groups } = proxiesData;
+      let hasChange = false
+      const newSelected: typeof selected = []
+      const { global, groups } = proxiesData
+      const selectableTypes = new Set([
+        'Selector',
+        'URLTest',
+        'Fallback',
+        'LoadBalance',
+      ])
 
       // 处理所有代理组
-      [global, ...groups].forEach(({ type, name, now }) => {
-        if (!now || type !== "Selector") {
-          if (selectedMap[name] != null) {
-            newSelected.push({ name, now: now || selectedMap[name] });
+      for (const group of [global, ...groups]) {
+        if (!group) {
+          continue
+        }
+
+        const { type, name, now } = group
+        const savedProxy = selectedMap[name]
+        const availableProxies = Array.isArray(group.all) ? group.all : []
+
+        if (!selectableTypes.has(type)) {
+          if (savedProxy != null || now != null) {
+            const preferredProxy = now ? now : savedProxy
+            newSelected.push({ name, now: preferredProxy })
           }
-          return;
+          continue
         }
 
-        const targetProxy = selectedMap[name];
-        if (targetProxy != null && targetProxy !== now) {
-          console.log(
-            `[ActivateSelected] 需要切换代理组 ${name}: ${now} -> ${targetProxy}`,
-          );
-          hasChange = true;
-          updateProxy(name, targetProxy);
+        if (savedProxy == null) {
+          if (now != null) {
+            newSelected.push({ name, now })
+          }
+          continue
         }
 
-        newSelected.push({ name, now: targetProxy || now });
-      });
+        const existsInGroup = availableProxies.some((proxy) => {
+          if (typeof proxy === 'string') {
+            return proxy === savedProxy
+          }
+
+          return proxy?.name === savedProxy
+        })
+
+        if (!existsInGroup) {
+          console.warn(
+            `[ActivateSelected] 保存的代理 ${savedProxy} 不存在于代理组 ${name}`,
+          )
+          hasChange = true
+          newSelected.push({ name, now: now ?? savedProxy })
+          continue
+        }
+
+        if (savedProxy !== now) {
+          debugLog(
+            `[ActivateSelected] 需要切换代理组 ${name}: ${now} -> ${savedProxy}`,
+          )
+          hasChange = true
+          try {
+            await selectNodeForGroup(name, savedProxy)
+          } catch (error: unknown) {
+            console.warn(
+              `[ActivateSelected] 切换代理组 ${name} 失败:`,
+              error instanceof Error ? error.message : String(error),
+            )
+          }
+        }
+
+        newSelected.push({ name, now: savedProxy })
+      }
 
       if (!hasChange) {
-        console.log("[ActivateSelected] 所有代理选择已经是目标状态，无需更新");
-        return;
+        debugLog('[ActivateSelected] 所有代理选择已经是目标状态，无需更新')
+        return
       }
 
-      console.log(`[ActivateSelected] 完成代理切换，保存新的选择配置`);
+      debugLog(`[ActivateSelected] 完成代理切换，保存新的选择配置`)
 
       try {
-        await patchProfile(profileData.current!, { selected: newSelected });
-        console.log("[ActivateSelected] 代理选择配置保存成功");
+        await patchProfile(current.uid, { selected: newSelected })
+        debugLog('[ActivateSelected] 代理选择配置保存成功')
 
-        // 切换节点后强制刷新后端缓存
-        await forceRefreshProxies();
-
-        setTimeout(() => {
-          mutate("getProxies", getProxies());
-        }, 100);
-      } catch (error: any) {
+        queryClient.setQueryData(['getProxies'], await calcuProxies())
+      } catch (error: unknown) {
         console.error(
-          "[ActivateSelected] 保存代理选择配置失败:",
-          error.message,
-        );
+          '[ActivateSelected] 保存代理选择配置失败:',
+          error instanceof Error ? error.message : String(error),
+        )
       }
-    } catch (error: any) {
-      console.error("[ActivateSelected] 处理代理选择失败:", error.message);
+    } catch (error: unknown) {
+      console.error(
+        '[ActivateSelected] 处理代理选择失败:',
+        error instanceof Error ? error.message : String(error),
+      )
     }
-  };
+  }
 
   return {
     profiles,
@@ -168,5 +227,5 @@ export const useProfiles = () => {
     isLoading: isValidating,
     error,
     isStale: !profiles && !error && !isValidating, // 检测是否处于异常状态
-  };
-};
+  }
+}
