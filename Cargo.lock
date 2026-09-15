@@ -1140,7 +1140,6 @@ dependencies = [
  "clash-verge-media-unlock",
  "clash-verge-signal",
  "clash_verge_service_ipc",
- "core-foundation 0.9.4",
  "criterion",
  "dark-light",
  "deelevate",
@@ -1175,7 +1174,6 @@ dependencies = [
  "smartstring",
  "socket2 0.6.5",
  "sysproxy",
- "system-configuration",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -1267,8 +1265,8 @@ dependencies = [
 
 [[package]]
 name = "clash_verge_service_ipc"
-version = "2.6.9"
-source = "git+https://github.com/clash-verge-rev/clash-verge-service-ipc.git?tag=v2.6.9#94f7747bfa42dcbc0d945f5b4a0f72c4b2edc647"
+version = "2.7.0"
+source = "git+https://github.com/clash-verge-rev/clash-verge-service-ipc.git?tag=v2.7.0#19461f50181ce53bb9b6c4445b07b5eb4cded7ec"
 dependencies = [
  "anyhow",
  "kode-bridge",
@@ -7015,8 +7013,8 @@ dependencies = [
 
 [[package]]
 name = "sysproxy"
-version = "0.7.0"
-source = "git+https://github.com/clash-verge-rev/sysproxy-rs.git?branch=main#61118cab4878ce66b8cb12b467b682b493f20e6c"
+version = "0.7.1"
+source = "git+https://github.com/clash-verge-rev/sysproxy-rs.git?branch=main#44aaf00ec9c6779e5a461a55d882eddff7841c98"
 dependencies = [
  "iptools",
  "log",
@@ -8486,9 +8484,8 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "045979e3f037cd18ad1cb2a419dfda133c5c29c9f3453370079f2255d46c257e"
+version = "0.24.1"
+source = "git+https://github.com/Tunglies/tray-icon.git?branch=fix%2Fmacos-27-click-reentrancy#5750c67d02d32f2af100e120ad665959d4268cef"
 dependencies = [
  "crossbeam-channel",
  "dirs 6.0.0",
