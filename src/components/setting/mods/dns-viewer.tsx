@@ -1,5 +1,6 @@
 import { RestartAltRounded } from '@mui/icons-material'
 import {
+  Alert,
   Box,
   Button,
   FormControl,
@@ -33,6 +34,8 @@ import {
   Switch,
 } from '@/components/base'
 import { useClash } from '@/hooks/use-clash'
+import { useProfiles } from '@/hooks/use-profiles'
+import { useVerge } from '@/hooks/use-verge'
 import { showNotice } from '@/services/notice-service'
 import { useThemeMode } from '@/services/states'
 import type { MonacoEditorInstance } from '@/types/monaco'
@@ -183,7 +186,14 @@ const DEFAULT_DNS_CONFIG = {
 
 export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation()
-  const { clash, mutateClash } = useClash()
+  const { mutateClash } = useClash()
+  const { verge } = useVerge()
+  const { current: currentProfile } = useProfiles()
+  const dnsEnabled = currentProfile
+    ? (verge?.profile_dns_settings?.[currentProfile.uid]?.enabled ??
+      verge?.enable_dns_settings ??
+      false)
+    : false
   const themeMode = useThemeMode()
 
   const [open, setOpen] = useState(false)
@@ -548,7 +558,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
         return
       }
 
-      if (clash?.dns?.enable) {
+      if (dnsEnabled) {
         await invoke('apply_dns_config', { apply: true })
         mutateClash()
       }
@@ -636,6 +646,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
       onCancel={() => setOpen(false)}
       onOk={onSave}
     >
+      <Alert severity="info" sx={{ mb: 2 }}>
+        {t('settings.modals.dns.dialog.profileScope')}
+      </Alert>
       <Typography
         variant="body2"
         color="warning.main"

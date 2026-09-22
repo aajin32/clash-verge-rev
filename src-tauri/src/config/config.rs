@@ -6,6 +6,7 @@ use crate::{
         CoreManager,
         handle::{self, Handle},
         listener::MIXED_PORT_KEY,
+        runtime_bundle::resolve_provider_path_conflicts,
         tray,
         validate::CoreConfigValidator,
     },
@@ -109,6 +110,7 @@ impl Config {
         }
 
         Self::runtime().await.apply();
+        logging_error!(Type::Config, Self::sync_dns_override().await);
 
         Ok(())
     }
@@ -225,8 +227,9 @@ impl Config {
     }
 
     pub(crate) async fn generate_with_profiles(profiles: &IProfiles) -> Result<()> {
-        let (mut config, exists_keys, logs) = enhance::enhance(profiles).await?;
+        let (mut config, exists_keys, logs, dns_override) = enhance::enhance(profiles).await?;
 
+        resolve_provider_path_conflicts(&mut config, &dirs::app_home_dir()?)?;
         sanitize_tunnels_proxy(&mut config);
         // Apply only to generated core config so the saved choice survives the next launch.
         if let Some(port) = MixedPort::session_fallback() {
@@ -236,6 +239,7 @@ impl Config {
         Self::runtime().await.edit_draft(|d| {
             *d = IRuntime {
                 config: Some(config),
+                dns_override: Some(dns_override),
                 exists_keys,
                 chain_logs: logs,
             }

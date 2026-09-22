@@ -508,7 +508,15 @@
     "dns": {
       "dialog": {
         "title": "DNS-Überschreibung",
+        "profileScope": "Der DNS-Überschreibungsschalter wird für jedes Profil separat gespeichert und gilt nur für dieses Profil.",
         "warning": "Wenn Sie sich nicht mit diesen Einstellungen auskennen, ändern Sie sie nicht und lassen Sie die DNS-Überschreibung deaktiviert."
+      },
+      "protection": {
+        "title": "Enable DNS Overwrite?",
+        "message": "This subscription contains custom DNS settings. DNS Overwrite may replace them, preventing nodes from connecting or some websites from loading. Enable it anyway?",
+        "enableAnyway": "Enable anyway",
+        "keepDisabled": "Keep disabled",
+        "autoDisabled": "DNS Overwrite was disabled to preserve the custom DNS settings in the current subscription."
       },
       "sections": {
         "general": "DNS-Einstellungen",
@@ -676,7 +684,7 @@
       },
       "clashService": {
         "installSuccess": "Service erfolgreich installiert",
-        "sidecarFallback": "Der Dienst konnte den Kern aufgrund der Pfadberechtigungen nicht starten. Die Anwendung läuft im Administratormodus weiter.",
+        "sidecarFallback": "Der Dienst konnte den Kern nicht starten. Die Anwendung läuft im Sidecar-Modus weiter; der Dienst bleibt nicht verfügbar.",
         "uninstallSuccess": "Service erfolgreich deinstalliert"
       },
       "updater": {
